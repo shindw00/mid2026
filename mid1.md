@@ -1,5 +1,6 @@
 # 1번 답안
 '''
+
 #include "raylib.h"
 
 #define SCREEN_WIDTH 800
@@ -101,4 +102,5 @@ int main(void) {
     CloseWindow();
     return 0;
 }
+
 '''
