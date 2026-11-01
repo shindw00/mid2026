@@ -1,0 +1,50 @@
+4. C언어에서 지역 변수(Local Variable) 앞에 static 키워드를 붙였을 때 발생하는 특징으로 가장 올바른 것은?
+2.함수가 종료되어도 변수가 메모리에서 소멸되지 않고 기존 값을 유지한다.
+
+5. C 코딩 수업에서 사용한 WSL과 IDE의 약어(대문자)와 약어가 의미하는 영어 풀 스펠링(Full Spelling)을 각각 적으시오.
+WSL: Windows Subsystem for Linux
+IDE: Integrated Development Environment
+
+6. Visual Studio 개발자 명령 프롬프트(Developer Command Prompt)에서 add.obj와 sub.obj 파일로 정적 라이브러리 my.lib를 생성할 때 사용하는 lib 명령어를 쓰시오.
+lib /out:my.lib add.obj sub.obj
+
+7. WSL(Linux) 환경에서 main.c, add.c, sub.c 파일로 구성된 C언어 프로젝트의 실행 파일 /main을 생성하고자 한다. gcc 컴파일러를 이용하여 이를 빌드하는 Makefile의 전체 내용을 작성하시오.
+main: main.c add.c sub.c
+gcc -o main main.c add.c sub.c
+
+9. 두 수 중에 큰 수를 찾는 슈도코드를 작성하시오.
+입력: a, b
+if a > b then
+    print a
+else
+    print b
+end if
+
+14. 배열 {3, 1, 2, 5, 4}의 정수 5개를 C언어 표준 라이브러리 함수 qsort()를 활용하여 내림차순으로 정렬하고 출력하는 프로그램을 작성하시오.
+#include <stdio.h>
+#include <stdlib.h>
+
+int compare(const void *a, const void *b) {
+    return *(int *)b - *(int *)a;
+}
+
+int main(void) {
+    int arr[] = {3, 1, 2, 5, 4};
+    qsort(arr, 5, sizeof(int), compare);
+    for (int i = 0; i < 5; i++)
+        printf("%d ", arr[i]);
+    return 0;
+}
+
+15. 주사위를 6,000번 던졌을 때, 1부터 6까지의 각 눈이 나올 횟수를 구하는 C언어 프로그램을 작성하시오.
+#include <stdio.h>
+#include <stdlib.h>
+
+int main(void) {
+    int count[6] = {0};
+    for (int i = 0; i < 6000; i++)
+        count[rand() % 6]++;
+    for (int i = 0; i < 6; i++)
+        printf("[%d] %d\n", i + 1, count[i]);
+    return 0;
+}
