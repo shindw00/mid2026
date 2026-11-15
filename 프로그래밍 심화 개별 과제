@@ -1,0 +1,409 @@
+#include "raylib.h"
+#include <stdbool.h>
+#include <stdlib.h>
+#include <time.h>
+
+#define BOARD_WIDTH 10
+#define BOARD_HEIGHT 20
+#define BLOCK_SIZE 32
+#define BOARD_OFFSET_X 40
+#define BOARD_OFFSET_Y 40
+
+// 7종 테트로미노 모양 정의 (4x4 매트릭스)
+const int SHAPES[7][4][4] = {
+    // I
+    {
+        {0, 0, 0, 0},
+        {1, 1, 1, 1},
+        {0, 0, 0, 0},
+        {0, 0, 0, 0}
+    },
+    // J
+    {
+        {1, 0, 0, 0},
+        {1, 1, 1, 0},
+        {0, 0, 0, 0},
+        {0, 0, 0, 0}
+    },
+    // L
+    {
+        {0, 0, 1, 0},
+        {1, 1, 1, 0},
+        {0, 0, 0, 0},
+        {0, 0, 0, 0}
+    },
+    // O
+    {
+        {0, 1, 1, 0},
+        {0, 1, 1, 0},
+        {0, 0, 0, 0},
+        {0, 0, 0, 0}
+    },
+    // S
+    {
+        {0, 1, 1, 0},
+        {1, 1, 0, 0},
+        {0, 0, 0, 0},
+        {0, 0, 0, 0}
+    },
+    // T
+    {
+        {0, 1, 0, 0},
+        {1, 1, 1, 0},
+        {0, 0, 0, 0},
+        {0, 0, 0, 0}
+    },
+    // Z
+    {
+        {1, 1, 0, 0},
+        {0, 1, 1, 0},
+        {0, 0, 0, 0},
+        {0, 0, 0, 0}
+    }
+};
+
+// 블록별 색상 (0번 인덱스는 빈칸)
+const Color COLORS[8] = {
+    BLANK,
+    SKYBLUE,    // I
+    BLUE,       // J
+    ORANGE,     // L
+    YELLOW,     // O
+    GREEN,      // S
+    PURPLE,     // T
+    RED         // Z
+};
+
+typedef struct {
+    int type;
+    int x, y;
+    int shape[4][4];
+} Piece;
+
+int board[BOARD_HEIGHT][BOARD_WIDTH] = {0};
+Piece currentPiece;
+Piece nextPiece;
+int score = 0;
+int linesCleared = 0;
+int level = 1;
+bool gameOver = false;
+
+// 4x4 행렬 시계 방향 회전
+void RotateMatrix(int mat[4][4]) {
+    int temp[4][4];
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            temp[c][3 - r] = mat[r][c];
+        }
+    }
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            mat[r][c] = temp[r][c];
+        }
+    }
+}
+
+// 충돌 검사
+bool CheckCollisionPiece(Piece p, int offsetX, int offsetY) {
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            if (p.shape[r][c]) {
+                int newX = p.x + c + offsetX;
+                int newY = p.y + r + offsetY;
+
+                // 좌우 및 바닥 경계 검사
+                if (newX < 0 || newX >= BOARD_WIDTH || newY >= BOARD_HEIGHT) {
+                    return true;
+                }
+                // 보드 위쪽(스폰 직후)은 무시하고 보드 내 기존 블록과 충돌 검사
+                if (newY >= 0 && board[newY][newX] != 0) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+// 새 블록 생성
+Piece CreateRandomPiece(void) {
+    Piece p;
+    p.type = GetRandomValue(0, 6);
+    p.x = BOARD_WIDTH / 2 - 2;
+    p.y = 0;
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            p.shape[r][c] = SHAPES[p.type][r][c];
+        }
+    }
+    return p;
+}
+
+// 다음 블록을 현재 블록으로 가져오고 새 다음 블록 준비
+void SpawnNextPiece(void) {
+    currentPiece = nextPiece;
+    nextPiece = CreateRandomPiece();
+    if (CheckCollisionPiece(currentPiece, 0, 0)) {
+        gameOver = true;
+    }
+}
+
+// 보드에 현재 블록 고정
+void LockPiece(void) {
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            if (currentPiece.shape[r][c]) {
+                int bx = currentPiece.x + c;
+                int by = currentPiece.y + r;
+                if (by >= 0 && by < BOARD_HEIGHT && bx >= 0 && bx < BOARD_WIDTH) {
+                    board[by][bx] = currentPiece.type + 1;
+                }
+            }
+        }
+    }
+}
+
+// 완성된 줄 제거 및 점수 계산
+void ClearLines(void) {
+    int clearedInTurn = 0;
+
+    for (int r = BOARD_HEIGHT - 1; r >= 0; r--) {
+        bool full = true;
+        for (int c = 0; c < BOARD_WIDTH; c++) {
+            if (board[r][c] == 0) {
+                full = false;
+                break;
+            }
+        }
+
+        if (full) {
+            clearedInTurn++;
+            for (int moveR = r; moveR > 0; moveR--) {
+                for (int c = 0; c < BOARD_WIDTH; c++) {
+                    board[moveR][c] = board[moveR - 1][c];
+                }
+            }
+            for (int c = 0; c < BOARD_WIDTH; c++) {
+                board[0][c] = 0;
+            }
+            r++; // 위에서 내려온 줄을 다시 검사하기 위해 인덱스 유지
+        }
+    }
+
+    if (clearedInTurn > 0) {
+        int lineScores[5] = {0, 100, 300, 500, 800};
+        score += lineScores[clearedInTurn] * level;
+        linesCleared += clearedInTurn;
+        level = (linesCleared / 10) + 1;
+    }
+}
+
+// 게임 초기화
+void ResetGame(void) {
+    for (int r = 0; r < BOARD_HEIGHT; r++) {
+        for (int c = 0; c < BOARD_WIDTH; c++) {
+            board[r][c] = 0;
+        }
+    }
+    score = 0;
+    linesCleared = 0;
+    level = 1;
+    gameOver = false;
+    nextPiece = CreateRandomPiece();
+    SpawnNextPiece();
+}
+
+// 입체감 있는 단일 셀 그리기
+void DrawCell(int px, int py, Color color) {
+    DrawRectangle(px, py, BLOCK_SIZE - 1, BLOCK_SIZE - 1, color);
+    DrawRectangleLines(px, py, BLOCK_SIZE - 1, BLOCK_SIZE - 1, Fade(WHITE, 0.35f));
+}
+
+int main(void) {
+    const int screenWidth = 540;
+    const int screenHeight = 720;
+
+    InitWindow(screenWidth, screenHeight, "Raylib Tetris in C");
+    SetTargetFPS(60);
+    SetRandomSeed((unsigned int)time(NULL));
+
+    ResetGame();
+
+    float fallTimer = 0.0f;
+    float moveTimer = 0.0f;
+
+    while (!WindowShouldClose()) {
+        float dt = GetFrameTime();
+
+        if (!gameOver) {
+            // 1. 좌우 이동 (단타 및 꾹 누르기 대응)
+            if (IsKeyPressed(KEY_LEFT) && !CheckCollisionPiece(currentPiece, -1, 0)) {
+                currentPiece.x--;
+                moveTimer = -0.15f; // 초기 딜레이
+            }
+            if (IsKeyPressed(KEY_RIGHT) && !CheckCollisionPiece(currentPiece, 1, 0)) {
+                currentPiece.x++;
+                moveTimer = -0.15f;
+            }
+            if (IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_RIGHT)) {
+                moveTimer += dt;
+                if (moveTimer >= 0.05f) {
+                    moveTimer = 0.0f;
+                    if (IsKeyDown(KEY_LEFT) && !CheckCollisionPiece(currentPiece, -1, 0)) currentPiece.x--;
+                    if (IsKeyDown(KEY_RIGHT) && !CheckCollisionPiece(currentPiece, 1, 0)) currentPiece.x++;
+                }
+            }
+
+            // 2. 회전 (간단한 Wall Kick 포함)
+            if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_X)) {
+                Piece rotated = currentPiece;
+                RotateMatrix(rotated.shape);
+
+                int kicks[5] = {0, -1, 1, -2, 2};
+                for (int i = 0; i < 5; i++) {
+                    if (!CheckCollisionPiece(rotated, kicks[i], 0)) {
+                        rotated.x += kicks[i];
+                        currentPiece = rotated;
+                        break;
+                    }
+                }
+            }
+
+            // 3. 하드 드롭 (스페이스바)
+            if (IsKeyPressed(KEY_SPACE)) {
+                while (!CheckCollisionPiece(currentPiece, 0, 1)) {
+                    currentPiece.y++;
+                    score += 2;
+                }
+                LockPiece();
+                ClearLines();
+                SpawnNextPiece();
+                fallTimer = 0.0f;
+            }
+
+            // 4. 자연 낙하 및 소프트 드롭 (아래 화살표)
+            float fallSpeed = 0.8f - (level - 1) * 0.07f;
+            if (fallSpeed < 0.08f) fallSpeed = 0.08f;
+            if (IsKeyDown(KEY_DOWN)) fallSpeed = 0.05f;
+
+            fallTimer += dt;
+            if (fallTimer >= fallSpeed) {
+                fallTimer = 0.0f;
+                if (!CheckCollisionPiece(currentPiece, 0, 1)) {
+                    currentPiece.y++;
+                    if (IsKeyDown(KEY_DOWN)) score += 1;
+                } else {
+                    LockPiece();
+                    ClearLines();
+                    SpawnNextPiece();
+                }
+            }
+        } else {
+            if (IsKeyPressed(KEY_R)) {
+                ResetGame();
+            }
+        }
+
+        // --- 렌더링 시작 ---
+        BeginDrawing();
+        ClearBackground((Color){24, 26, 32, 255});
+
+        // 보드 배경 및 그리드
+        int boardPixelW = BOARD_WIDTH * BLOCK_SIZE;
+        int boardPixelH = BOARD_HEIGHT * BLOCK_SIZE;
+        DrawRectangle(BOARD_OFFSET_X, BOARD_OFFSET_Y, boardPixelW, boardPixelH, (Color){16, 18, 22, 255});
+
+        for (int r = 0; r <= BOARD_HEIGHT; r++) {
+            DrawLine(BOARD_OFFSET_X, BOARD_OFFSET_Y + r * BLOCK_SIZE,
+                     BOARD_OFFSET_X + boardPixelW, BOARD_OFFSET_Y + r * BLOCK_SIZE, (Color){35, 38, 46, 255});
+        }
+        for (int c = 0; c <= BOARD_WIDTH; c++) {
+            DrawLine(BOARD_OFFSET_X + c * BLOCK_SIZE, BOARD_OFFSET_Y,
+                     BOARD_OFFSET_X + c * BLOCK_SIZE, BOARD_OFFSET_Y + boardPixelH, (Color){35, 38, 46, 255});
+        }
+        DrawRectangleLinesEx((Rectangle){BOARD_OFFSET_X - 2, BOARD_OFFSET_Y - 2, boardPixelW + 4, boardPixelH + 4}, 2, GRAY);
+
+        // 보드에 쌓인 블록 그리기
+        for (int r = 0; r < BOARD_HEIGHT; r++) {
+            for (int c = 0; c < BOARD_WIDTH; c++) {
+                if (board[r][c] != 0) {
+                    DrawCell(BOARD_OFFSET_X + c * BLOCK_SIZE,
+                             BOARD_OFFSET_Y + r * BLOCK_SIZE,
+                             COLORS[board[r][c]]);
+                }
+            }
+        }
+
+        if (!gameOver) {
+            // 고스트 블록(착지 예상 위치) 계산 및 그리기
+            Piece ghost = currentPiece;
+            while (!CheckCollisionPiece(ghost, 0, 1)) {
+                ghost.y++;
+            }
+            for (int r = 0; r < 4; r++) {
+                for (int c = 0; c < 4; c++) {
+                    if (ghost.shape[r][c]) {
+                        int px = BOARD_OFFSET_X + (ghost.x + c) * BLOCK_SIZE;
+                        int py = BOARD_OFFSET_Y + (ghost.y + r) * BLOCK_SIZE;
+                        DrawRectangleLines(px + 2, py + 2, BLOCK_SIZE - 5, BLOCK_SIZE - 5, Fade(COLORS[ghost.type + 1], 0.5f));
+                    }
+                }
+            }
+
+            // 현재 조작 중인 블록 그리기
+            for (int r = 0; r < 4; r++) {
+                for (int c = 0; c < 4; c++) {
+                    if (currentPiece.shape[r][c]) {
+                        int px = BOARD_OFFSET_X + (currentPiece.x + c) * BLOCK_SIZE;
+                        int py = BOARD_OFFSET_Y + (currentPiece.y + r) * BLOCK_SIZE;
+                        if (currentPiece.y + r >= 0) {
+                            DrawCell(px, py, COLORS[currentPiece.type + 1]);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 우측 UI 패널
+        int uiX = BOARD_OFFSET_X + boardPixelW + 30;
+        DrawText("NEXT", uiX, BOARD_OFFSET_Y, 22, LIGHTGRAY);
+        DrawRectangle(uiX, BOARD_OFFSET_Y + 32, 130, 130, (Color){16, 18, 22, 255});
+        DrawRectangleLines(uiX, BOARD_OFFSET_Y + 32, 130, 130, DARKGRAY);
+
+        for (int r = 0; r < 4; r++) {
+            for (int c = 0; c < 4; c++) {
+                if (nextPiece.shape[r][c]) {
+                    DrawCell(uiX + 12 + c * 26, BOARD_OFFSET_Y + 50 + r * 26, COLORS[nextPiece.type + 1]);
+                }
+            }
+        }
+
+        DrawText("SCORE", uiX, BOARD_OFFSET_Y + 190, 20, LIGHTGRAY);
+        DrawText(TextFormat("%d", score), uiX, BOARD_OFFSET_Y + 216, 26, GOLD);
+
+        DrawText("LEVEL", uiX, BOARD_OFFSET_Y + 265, 20, LIGHTGRAY);
+        DrawText(TextFormat("%d", level), uiX, BOARD_OFFSET_Y + 291, 26, SKYBLUE);
+
+        DrawText("LINES", uiX, BOARD_OFFSET_Y + 340, 20, LIGHTGRAY);
+        DrawText(TextFormat("%d", linesCleared), uiX, BOARD_OFFSET_Y + 366, 26, GREEN);
+
+        // 조작법 안내
+        DrawText("CONTROLS", uiX, BOARD_OFFSET_Y + 440, 18, GRAY);
+        DrawText("Left/Right : Move", uiX, BOARD_OFFSET_Y + 468, 15, DARKGRAY);
+        DrawText("Up / X : Rotate", uiX, BOARD_OFFSET_Y + 490, 15, DARKGRAY);
+        DrawText("Down : Soft Drop", uiX, BOARD_OFFSET_Y + 512, 15, DARKGRAY);
+        DrawText("Space : Hard Drop", uiX, BOARD_OFFSET_Y + 534, 15, DARKGRAY);
+
+        // 게임 오버 오버레이
+        if (gameOver) {
+            DrawRectangle(BOARD_OFFSET_X, BOARD_OFFSET_Y + boardPixelH / 2 - 60, boardPixelW, 120, Fade(BLACK, 0.85f));
+            DrawText("GAME OVER", BOARD_OFFSET_X + 65, BOARD_OFFSET_Y + boardPixelH / 2 - 35, 32, RED);
+            DrawText("Press [R] to Restart", BOARD_OFFSET_X + 68, BOARD_OFFSET_Y + boardPixelH / 2 + 12, 18, WHITE);
+        }
+
+        EndDrawing();
+    }
+
+    CloseWindow();
+    return 0;
+}
